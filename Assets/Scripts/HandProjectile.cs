@@ -2,40 +2,83 @@ using UnityEngine;
 
 public class HandProjectile : MonoBehaviour
 {
-    private Rigidbody rb;
-    private bool hasHit = false;
+    private Vector3 target;
+    private float moveSpeed;
+    private Grabpack controller;
+    
+    private Transform returnTarget;
+    private bool isReturning = false;
+    private bool isAnchored = false;
 
-    void Start()
+    public void Setup(Vector3 shootTarget, float speed, Grabpack ctrl)
     {
-        rb = GetComponent<Rigidbody>();
+        target = shootTarget;
+        moveSpeed = speed;
+        controller = ctrl;
+        isReturning = false;
+        isAnchored = false;
     }
 
-    void OnCollisionEnter(Collision collision)
+    void Update()
     {
-        // Si la main a déjà touché un vrai mur, on ne fait rien
-        if (hasHit) return;
-
-        // --- SÉCURITÉ ANTI-COLLISION JOUEUR ---
-        // On ignore si l'objet s'appelle "Player", a le tag "Player", 
-        // ou si son parent ou ses enfants contiennent le script du joueur
-        if (collision.gameObject.CompareTag("Player") || 
-            collision.gameObject.name.Contains("Player") ||
-            collision.gameObject.GetComponentInParent<FPSController>() != null)
+        if (isReturning)
         {
-            return; // On sort de la fonction sans bloquer la main !
+            // Retour absolu vers le bras du joueur (Recul en ligne droite)
+            transform.position = Vector3.MoveTowards(transform.position, returnTarget.position, moveSpeed * Time.deltaTime);
+            
+            // On ne modifie plus la rotation ici : la main reste droite et recule proprement sans se retourner !
+
+            if (Vector3.Distance(transform.position, returnTarget.position) < 0.2f)
+            {
+                controller.OnHandReturned();
+            }
+        }
+        else if (!isAnchored)
+        {
+            // Avance mathématique en ligne droite vers l'impact
+            transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
+
+            // FORCE LA ROTATION EN CONTINU PENDANT LE VOL
+            if (target - transform.position != Vector3.zero)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(target - transform.position);
+                // On applique le -90° sur l'axe X à chaque image pour que la main garde sa correction
+                transform.rotation = targetRot * Quaternion.Euler(-90f, 0f, 0f); 
+            }
+
+            // Si la portée max est atteinte sans mur, la main revient toute seule
+            if (Vector3.Distance(transform.position, target) < 0.1f)
+            {
+                controller.RecallHand();
+            }
+        }
+    }
+
+    public void StartReturn(Transform playerPivot, float speed)
+    {
+        returnTarget = playerPivot;
+        moveSpeed = speed;
+        isReturning = true;
+        isAnchored = false;
+        transform.SetParent(null); // Se détache du mur
+    }
+
+    // Gestion universelle des impacts (Trigger et Collision standard)
+    private void OnTriggerEnter(Collider other) { CheckImpact(other.gameObject, other.transform); }
+    private void OnCollisionEnter(Collision collision) { CheckImpact(collision.gameObject, collision.transform); }
+
+    void CheckImpact(GameObject hitObject, Transform hitTransform)
+    {
+        if (isReturning || isAnchored) return;
+
+        // Anti-collision joueur pour ne pas se bloquer au départ
+        if (hitObject.CompareTag("Player") || hitObject.GetComponentInParent<CharacterController>() != null || hitObject.name.Contains("Player") || hitObject.name.Contains("Camera"))
+        {
+            return;
         }
 
-        // Si on arrive ici, c'est qu'on a touché un vrai décor (sol, mur, bouton...)
-        hasHit = true;
-        
-        // Bloque instantanément la physique pour que la main reste figée sur le mur
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.isKinematic = true;
-        }
-
-        // Attache la main à l'objet touché pour qu'elle reste collée au mur
-        transform.SetParent(collision.transform);
+        // Accrochage de la main sur l'objet touché
+        isAnchored = true;
+        transform.SetParent(hitTransform); 
     }
 }
