@@ -30,10 +30,20 @@ public class FPSController : MonoBehaviour
     private float currentSpeed;
     private bool isGrounded;
 
+    // Référence pour vos animations
+    private Animator animator;
+
     void Start()
     {
         characterController = GetComponent<CharacterController>();
         
+        // Tente de récupérer l'Animator sur le joueur ou sur ses mains enfants (Grabpack)
+        animator = GetComponent<Animator>();
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
+
         if (groundLayer.value == 0) groundLayer = ~0;
 
         // Force la fermeture du menu au lancement
@@ -44,8 +54,12 @@ public class FPSController : MonoBehaviour
     {
         HandleMenuInput();
 
-        // Si le menu est ouvert, on bloque les mouvements et la caméra
-        if (isMenuOpen) return;
+        // Si le menu est ouvert, on bloque les mouvements, la caméra et on force l'arrêt de l'animation
+        if (isMenuOpen) 
+        {
+            if (animator != null) animator.SetBool("isWalking", false);
+            return;
+        }
 
         CheckGroundStatus();
         HandleRotation();
@@ -142,6 +156,21 @@ public class FPSController : MonoBehaviour
 
         Vector3 move = transform.right * moveX + transform.forward * moveZ;
         characterController.Move(move * currentSpeed * Time.deltaTime);
+
+        // --- GESTION STRICTE DE L'ANIMATION DE MARCHE ---
+        if (animator != null)
+        {
+            // Si l'une des touches directionnelles est active
+            if (moveX != 0f || moveZ != 0f)
+            {
+                animator.SetBool("isWalking", true);
+            }
+            else
+            {
+                // Si aucune touche n'est détectée, on force impérativement le retour à l'Idle
+                animator.SetBool("isWalking", false);
+            }
+        }
 
         if (isGrounded)
         {
