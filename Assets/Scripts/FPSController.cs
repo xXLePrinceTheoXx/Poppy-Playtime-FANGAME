@@ -46,7 +46,6 @@ public class FPSController : MonoBehaviour
 
         targetHeight = normalHeight;
 
-        // Verrouiller le curseur au démarrage
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
@@ -156,13 +155,14 @@ public class FPSController : MonoBehaviour
         Vector3 move = transform.right * moveX + transform.forward * moveZ;
         characterController.Move(move * currentSpeed * Time.deltaTime);
 
-        // Animations
+        // --- ANIMATIONS ---
         if (animator != null)
         {
             bool isMoving = (moveX != 0f || moveZ != 0f);
             bool isRunning = isMoving && currentKeyboard.leftShiftKey.isPressed;
 
-            animator.SetBool("isWalking", isMoving);
+            // isWalking = vrai seulement si on marche ET qu'on ne court pas
+            animator.SetBool("isWalking", isMoving && !isRunning);
             animator.SetBool("isRunning", isRunning);
         }
 

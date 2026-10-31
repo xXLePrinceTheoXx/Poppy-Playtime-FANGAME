@@ -3,31 +3,25 @@ using UnityEngine;
 public class HandProjectile : MonoBehaviour
 {
     private Vector3 target;
-    private float moveSpeed;
+    private float speed;
     private Grabpack controller;
-    private HandSide handSide;
-    
-    private Transform returnTarget;
-    private bool isReturning = false;
-    private bool isAnchored = false;
-    private Rigidbody rb;
-    private Collider myCollider;
+    private HandSide side;
 
-    public void Setup(Vector3 shootTarget, float speed, Grabpack ctrl, HandSide side)
+    private bool returning = false;
+    private bool anchored = false;
+    private Transform returnTarget;
+    private Rigidbody rb;
+
+    public void Setup(Vector3 shootTarget, float spd, Grabpack ctrl, HandSide s)
     {
         target = shootTarget;
-        moveSpeed = speed;
+        speed = spd;
         controller = ctrl;
-        handSide = side;
-        isReturning = false;
-        isAnchored = false;
-    }
+        side = s;
+        returning = false;
+        anchored = false;
 
-    void Start()
-    {
         rb = GetComponent<Rigidbody>();
-        myCollider = GetComponent<Collider>();
-
         if (rb != null)
         {
             rb.useGravity = false;
@@ -37,73 +31,53 @@ public class HandProjectile : MonoBehaviour
 
     void Update()
     {
-        if (isReturning)
+        if (returning)
         {
-            transform.position = Vector3.MoveTowards(transform.position, returnTarget.position, moveSpeed * Time.deltaTime);
-
+            transform.position = Vector3.MoveTowards(transform.position, returnTarget.position, speed * Time.deltaTime);
             if (Vector3.Distance(transform.position, returnTarget.position) < 0.2f)
-            {
-                controller.OnHandReturned(handSide);
-            }
+                controller.OnHandReturned(side);
         }
-        else if (!isAnchored)
+        else if (!anchored)
         {
-            transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
-
+            transform.position = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
             if (Vector3.Distance(transform.position, target) < 0.05f)
-            {
-                // Rappel automatique quand la portée est atteinte
-                controller.OnHandReturned(handSide);
-            }
+                controller.OnHandReturned(side);
         }
     }
 
-    private void OnTriggerEnter(Collider other)
+    void OnTriggerEnter(Collider other)
     {
-        if (isReturning || isAnchored) return;
-
-        if (other.CompareTag("Player") || other.name.Contains("Player") || other.name.Contains("Camera") || other.GetComponentInParent<CharacterController>() != null)
-        {
-            return;
-        }
+        if (returning || anchored) return;
+        if (other.CompareTag("Player") || other.GetComponentInParent<CharacterController>() != null) return;
 
         Vector3 hitPoint = transform.position;
         Vector3 hitNormal = Vector3.up;
 
-        Ray ray = new Ray(transform.position + (target - transform.position).normalized * -0.5f, (target - transform.position).normalized);
+        Ray ray = new Ray(transform.position, (target - transform.position).normalized);
         if (other.Raycast(ray, out RaycastHit hit, 2f))
         {
             hitPoint = hit.point;
             hitNormal = hit.normal;
         }
 
-        LockOnHand(hitPoint, hitNormal, other.transform);
+        Anchor(hitPoint, hitNormal, other.transform);
     }
 
-    private void OnCollisionEnter(Collision collision)
+    void OnCollisionEnter(Collision collision)
     {
-        if (isReturning || isAnchored) return;
+        if (returning || anchored) return;
+        if (collision.gameObject.CompareTag("Player")) return;
 
-        GameObject hitObject = collision.gameObject;
-
-        if (hitObject.CompareTag("Player") || hitObject.name.Contains("Player") || hitObject.name.Contains("Camera"))
-        {
-            return;
-        }
-
-        ContactPoint contact = collision.contacts[0];
-        LockOnHand(contact.point, contact.normal, collision.transform);
+        var contact = collision.contacts[0];
+        Anchor(contact.point, contact.normal, collision.transform);
     }
 
-    void LockOnHand(Vector3 hitPoint, Vector3 surfaceNormal, Transform hitTransform)
+    void Anchor(Vector3 point, Vector3 normal, Transform parent)
     {
-        isAnchored = true;
-
+        anchored = true;
         transform.SetParent(null);
-        transform.position = hitPoint;
-
-        Quaternion surfaceRotation = Quaternion.LookRotation(-surfaceNormal);
-        transform.rotation = surfaceRotation * Quaternion.Euler(-90f, 0f, 0f);
+        transform.position = point;
+        transform.rotation = Quaternion.LookRotation(-normal) * Quaternion.Euler(-90f, 0f, 0f);
 
         if (rb != null)
         {
@@ -111,15 +85,15 @@ public class HandProjectile : MonoBehaviour
             rb.isKinematic = true;
         }
 
-        transform.SetParent(hitTransform);
+        transform.SetParent(parent);
     }
 
-    public void StartReturn(Transform playerPivot, float speed)
+    public void StartReturn(Transform pivot, float spd)
     {
-        returnTarget = playerPivot;
-        moveSpeed = speed;
-        isReturning = true;
-        isAnchored = false;
+        returning = true;
+        anchored = false;
+        speed = spd;
+        returnTarget = pivot;
         transform.SetParent(null);
     }
 }

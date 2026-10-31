@@ -5,268 +5,197 @@ public class Grabpack : MonoBehaviour
 {
     public enum HandState { Idle, Shooting, Returning }
 
-    [Header("Bras et Origines - Main Gauche (Bleue)")]
+    [Header("Main Gauche (Bleue)")]
     public Transform leftHandPivot;
     public GameObject leftHandVisual;
+    public GameObject leftHandPrefab;
 
-    [Header("Bras et Origines - Main Droite (Rouge)")]
+    [Header("Main Droite (Violette)")]
     public Transform rightHandPivot;
     public GameObject rightHandVisual;
+    public GameObject rightHandPrefab;
 
-    [Header("Projectiles Prefabs")]
-    [Tooltip("Glisse ici ton prefab de main bleue (Hand_Blue)")]
-    public GameObject blueHandPrefab;
+    [Header("Câbles")]
+    public LineRenderer leftLine;
+    public LineRenderer rightLine;
 
-    [Tooltip("Glisse ici ton prefab de main rouge (Hand_Red)")]
-    public GameObject redHandPrefab;
-
-    [Header("Line Renderers (Câbles)")]
-    public LineRenderer blueLine;
-    public LineRenderer redLine;
-
-    [Header("Paramètres")]
+    [Header("Réglages")]
     public float shootDistance = 25f;
     public float speed = 35f;
     public float returnSpeed = 40f;
 
-    [Header("Ajustements de Visée")]
-    [Tooltip("Décale le point de spawn par rapport à la caméra (X=gauche/droite, Y=haut/bas, Z=avant)")]
-    public Vector3 cameraSpawnOffset = new Vector3(-0.3f, 0f, 0.5f);
-
-    // État Main Gauche
-    private HandState blueState = HandState.Idle;
-    private GameObject activeBlueHand;
-    private Vector3 blueTargetPoint;
-
-    // État Main Droite
-    private HandState redState = HandState.Idle;
-    private GameObject activeRedHand;
-    private Vector3 redTargetPoint;
-
-    private Transform cameraTransform;
+    private HandState leftState = HandState.Idle;
+    private HandState rightState = HandState.Idle;
+    private GameObject activeLeft;
+    private GameObject activeRight;
+    private Vector3 leftTarget;
+    private Vector3 rightTarget;
+    private Transform cam;
 
     void Start()
     {
-        cameraTransform = Camera.main != null ? Camera.main.transform : transform;
+        cam = Camera.main != null ? Camera.main.transform : transform;
 
-        if (blueLine != null)
-        {
-            blueLine.enabled = true;
-            blueLine.positionCount = 0;
-        }
-
-        if (redLine != null)
-        {
-            redLine.enabled = true;
-            redLine.positionCount = 0;
-        }
+        // Debug pour vérifier ce qui est configuré
+        if (leftHandPrefab == null) Debug.LogError("[Grabpack] Left Hand Prefab manquant !");
+        if (rightHandPrefab == null) Debug.LogError("[Grabpack] Right Hand Prefab manquant !");
+        if (leftHandPivot == null) Debug.LogError("[Grabpack] Left Hand Pivot manquant !");
+        if (rightHandPivot == null) Debug.LogError("[Grabpack] Right Hand Pivot manquant !");
+        if (leftLine == null) Debug.LogWarning("[Grabpack] Left Line manquant !");
+        if (rightLine == null) Debug.LogWarning("[Grabpack] Right Line manquant !");
     }
 
     void Update()
     {
         HandleInput();
-        HandleCableRendering();
+        DrawLines();
     }
 
     void HandleInput()
     {
-        Mouse currentMouse = Mouse.current;
-        if (currentMouse == null) return;
+        var mouse = Mouse.current;
+        if (mouse == null) return;
 
-        // --- CLIC GAUCHE : MAIN BLEUE ---
-        if (currentMouse.leftButton.wasPressedThisFrame)
+        if (mouse.leftButton.wasPressedThisFrame)
         {
-            if (blueState == HandState.Idle)
-                ShootLeftHand();
-            else
-                RecallLeftHand();
+            Debug.Log("[Grabpack] Clic gauche détecté");
+            if (leftState == HandState.Idle) Shoot(HandSide.Left);
+            else Recall(HandSide.Left);
         }
 
-        // --- CLIC DROIT : MAIN ROUGE ---
-        if (currentMouse.rightButton.wasPressedThisFrame)
+        if (mouse.rightButton.wasPressedThisFrame)
         {
-            if (redState == HandState.Idle)
-                ShootRightHand();
-            else
-                RecallRightHand();
+            Debug.Log("[Grabpack] Clic droit détecté");
+            if (rightState == HandState.Idle) Shoot(HandSide.Right);
+            else Recall(HandSide.Right);
         }
     }
 
-    // ============ MAIN GAUCHE (BLEUE) ============
-
-    void ShootLeftHand()
+    void Shoot(HandSide side)
     {
-        if (cameraTransform == null || leftHandPivot == null || blueHandPrefab == null) return;
+        if (cam == null)
+        {
+            Debug.LogError("[Grabpack] Caméra introuvable !");
+            return;
+        }
 
-        blueState = HandState.Shooting;
-        if (leftHandVisual != null) leftHandVisual.SetActive(false);
+        Transform pivot = side == HandSide.Left ? leftHandPivot : rightHandPivot;
+        GameObject visual = side == HandSide.Left ? leftHandVisual : rightHandVisual;
+        GameObject prefab = side == HandSide.Left ? leftHandPrefab : rightHandPrefab;
 
-        // 1. CALCUL DE LA CIBLE
-        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        string sideName = side == HandSide.Left ? "GAUCHE" : "DROITE";
+
+        if (pivot == null)
+        {
+            Debug.LogError($"[Grabpack] Pivot {sideName} manquant !");
+            return;
+        }
+        if (prefab == null)
+        {
+            Debug.LogError($"[Grabpack] Prefab {sideName} manquant !");
+            return;
+        }
+
+        if (side == HandSide.Left) leftState = HandState.Shooting;
+        else rightState = HandState.Shooting;
+
+        if (visual != null) visual.SetActive(false);
+
+        Ray ray = new Ray(cam.position, cam.forward);
         if (Physics.Raycast(ray, out RaycastHit hit, shootDistance, ~0, QueryTriggerInteraction.Ignore))
         {
-            blueTargetPoint = hit.point;
+            if (side == HandSide.Left) leftTarget = hit.point;
+            else rightTarget = hit.point;
         }
         else
         {
-            blueTargetPoint = ray.GetPoint(shootDistance);
+            if (side == HandSide.Left) leftTarget = ray.GetPoint(shootDistance);
+            else rightTarget = ray.GetPoint(shootDistance);
         }
 
-        // 2. SPAWN AU MILIEU DE L'ÉCRAN
-        Vector3 centerScreenSpawn = cameraTransform.TransformPoint(new Vector3(0f, 0f, 0.5f));
+        float sideX = side == HandSide.Left ? -0.2f : 0.2f;
+        Vector3 spawnPos = cam.TransformPoint(new Vector3(sideX, 0f, 0.5f));
+        Quaternion spawnRot = cam.rotation * Quaternion.Euler(-90f, 0f, 0f);
 
-        // 3. ROTATION
-        Quaternion spawnRotation = cameraTransform.rotation;
-        spawnRotation *= Quaternion.Euler(-90f, 0f, 0f);
+        Debug.Log($"[Grabpack] Spawn main {sideName} à {spawnPos}");
 
-        activeBlueHand = Instantiate(blueHandPrefab, centerScreenSpawn, spawnRotation);
-        activeBlueHand.SetActive(true);
-        activeBlueHand.transform.SetParent(null);
+        GameObject hand = Instantiate(prefab, spawnPos, spawnRot);
+        hand.transform.SetParent(null);
 
-        HandProjectile proj = activeBlueHand.GetComponent<HandProjectile>();
+        var proj = hand.GetComponent<HandProjectile>();
         if (proj != null)
-        {
-            proj.Setup(blueTargetPoint, speed, this, HandSide.Left);
-        }
+            proj.Setup(side == HandSide.Left ? leftTarget : rightTarget, speed, this, side);
+        else
+            Debug.LogError($"[Grabpack] Le préfab {sideName} n'a pas de HandProjectile !");
+
+        if (side == HandSide.Left) activeLeft = hand;
+        else activeRight = hand;
     }
 
-    public void RecallLeftHand()
+    public void Recall(HandSide side)
     {
-        if (blueState == HandState.Idle) return;
-        blueState = HandState.Returning;
-
-        if (activeBlueHand != null)
+        if (side == HandSide.Left)
         {
-            HandProjectile proj = activeBlueHand.GetComponent<HandProjectile>();
-            if (proj != null) proj.StartReturn(leftHandPivot, returnSpeed);
-        }
-    }
-
-    public void OnLeftHandReturned()
-    {
-        blueState = HandState.Idle;
-        if (blueLine != null) blueLine.positionCount = 0;
-        if (leftHandVisual != null) leftHandVisual.SetActive(true);
-        if (activeBlueHand != null) Destroy(activeBlueHand);
-        activeBlueHand = null;
-    }
-
-    // ============ MAIN DROITE (ROUGE) ============
-
-    void ShootRightHand()
-    {
-        if (cameraTransform == null || rightHandPivot == null || redHandPrefab == null) return;
-
-        redState = HandState.Shooting;
-        if (rightHandVisual != null) rightHandVisual.SetActive(false);
-
-        // 1. CALCUL DE LA CIBLE
-        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
-        if (Physics.Raycast(ray, out RaycastHit hit, shootDistance, ~0, QueryTriggerInteraction.Ignore))
-        {
-            redTargetPoint = hit.point;
+            if (leftState == HandState.Idle) return;
+            leftState = HandState.Returning;
+            if (activeLeft != null)
+            {
+                var proj = activeLeft.GetComponent<HandProjectile>();
+                if (proj != null) proj.StartReturn(leftHandPivot, returnSpeed);
+            }
         }
         else
         {
-            redTargetPoint = ray.GetPoint(shootDistance);
-        }
-
-        // 2. SPAWN AU MILIEU DE L'ÉCRAN
-        Vector3 centerScreenSpawn = cameraTransform.TransformPoint(new Vector3(0f, 0f, 0.5f));
-
-        // 3. ROTATION
-        Quaternion spawnRotation = cameraTransform.rotation;
-        spawnRotation *= Quaternion.Euler(-90f, 0f, 0f);
-
-        activeRedHand = Instantiate(redHandPrefab, centerScreenSpawn, spawnRotation);
-        activeRedHand.SetActive(true);
-        activeRedHand.transform.SetParent(null);
-
-        HandProjectile proj = activeRedHand.GetComponent<HandProjectile>();
-        if (proj != null)
-        {
-            proj.Setup(redTargetPoint, speed, this, HandSide.Right);
-        }
-    }
-
-    public void RecallRightHand()
-    {
-        if (redState == HandState.Idle) return;
-        redState = HandState.Returning;
-
-        if (activeRedHand != null)
-        {
-            HandProjectile proj = activeRedHand.GetComponent<HandProjectile>();
-            if (proj != null) proj.StartReturn(rightHandPivot, returnSpeed);
-        }
-    }
-
-    public void OnRightHandReturned()
-    {
-        redState = HandState.Idle;
-        if (redLine != null) redLine.positionCount = 0;
-        if (rightHandVisual != null) rightHandVisual.SetActive(true);
-        if (activeRedHand != null) Destroy(activeRedHand);
-        activeRedHand = null;
-    }
-
-    // ============ CÂBLES ============
-
-    void HandleCableRendering()
-    {
-        // Câble bleu (main gauche)
-        if (blueState != HandState.Idle && activeBlueHand != null && blueLine != null)
-        {
-            blueLine.positionCount = 2;
-            blueLine.SetPosition(0, leftHandPivot.position);
-
-            MeshRenderer meshRenderer = activeBlueHand.GetComponentInChildren<MeshRenderer>();
-            if (meshRenderer != null)
+            if (rightState == HandState.Idle) return;
+            rightState = HandState.Returning;
+            if (activeRight != null)
             {
-                blueLine.SetPosition(1, meshRenderer.bounds.center);
-            }
-            else
-            {
-                blueLine.SetPosition(1, activeBlueHand.transform.position);
+                var proj = activeRight.GetComponent<HandProjectile>();
+                if (proj != null) proj.StartReturn(rightHandPivot, returnSpeed);
             }
         }
-        else if (blueLine != null)
-        {
-            blueLine.positionCount = 0;
-        }
-
-        // Câble rouge (main droite)
-        if (redState != HandState.Idle && activeRedHand != null && redLine != null)
-        {
-            redLine.positionCount = 2;
-            redLine.SetPosition(0, rightHandPivot.position);
-
-            MeshRenderer meshRenderer = activeRedHand.GetComponentInChildren<MeshRenderer>();
-            if (meshRenderer != null)
-            {
-                redLine.SetPosition(1, meshRenderer.bounds.center);
-            }
-            else
-            {
-                redLine.SetPosition(1, activeRedHand.transform.position);
-            }
-        }
-        else if (redLine != null)
-        {
-            redLine.positionCount = 0;
-        }
     }
-
-    // ============ MÉTHODES PUBLIQUES APPELÉES PAR HandProjectile ============
 
     public void OnHandReturned(HandSide side)
     {
         if (side == HandSide.Left)
-            OnLeftHandReturned();
+        {
+            leftState = HandState.Idle;
+            if (leftLine != null) leftLine.positionCount = 0;
+            if (leftHandVisual != null) leftHandVisual.SetActive(true);
+            if (activeLeft != null) Destroy(activeLeft);
+            activeLeft = null;
+        }
         else
-            OnRightHandReturned();
+        {
+            rightState = HandState.Idle;
+            if (rightLine != null) rightLine.positionCount = 0;
+            if (rightHandVisual != null) rightHandVisual.SetActive(true);
+            if (activeRight != null) Destroy(activeRight);
+            activeRight = null;
+        }
+    }
+
+    void DrawLines()
+    {
+        if (leftState != HandState.Idle && activeLeft != null && leftLine != null)
+        {
+            leftLine.positionCount = 2;
+            leftLine.SetPosition(0, leftHandPivot.position);
+            var mr = activeLeft.GetComponentInChildren<MeshRenderer>();
+            leftLine.SetPosition(1, mr != null ? mr.bounds.center : activeLeft.transform.position);
+        }
+        else if (leftLine != null) leftLine.positionCount = 0;
+
+        if (rightState != HandState.Idle && activeRight != null && rightLine != null)
+        {
+            rightLine.positionCount = 2;
+            rightLine.SetPosition(0, rightHandPivot.position);
+            var mr = activeRight.GetComponentInChildren<MeshRenderer>();
+            rightLine.SetPosition(1, mr != null ? mr.bounds.center : activeRight.transform.position);
+        }
+        else if (rightLine != null) rightLine.positionCount = 0;
     }
 }
 
-// Côté de la main pour distinguer bleu/rouge
 public enum HandSide { Left, Right }
