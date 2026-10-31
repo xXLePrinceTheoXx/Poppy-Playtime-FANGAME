@@ -7,17 +7,17 @@ public class FPSController : MonoBehaviour
     [Header("Déplacements")]
     public float walkSpeed = 5.0f;
     public float sprintSpeed = 8.0f;
-    public float crouchSpeed = 2.5f; // Vitesse quand on est accroupi
-    public float jumpHeight = 1.5f;
+    public float crouchSpeed = 4.0f;
+    public float jumpHeight = 3.0f;
     public float gravity = -9.81f;
 
     [Header("Options Accroupi (Crouch)")]
-    public float normalHeight = 2.0f; // Taille normale du personnage
-    public float crouchHeight = 1.0f; // Taille accroupie
-    public float crouchTransitionSpeed = 10f; // Fluidité de la transition
+    public float normalHeight = 2.0f;
+    public float crouchHeight = 1.0f;
+    public float crouchTransitionSpeed = 10f;
 
     [Header("Détection du Sol")]
-    public float groundCheckDistance = 0.2f;
+    public float groundCheckDistance = 0.5f;
     public LayerMask groundLayer; 
 
     [Header("Caméra et Souris")]
@@ -26,10 +26,6 @@ public class FPSController : MonoBehaviour
     public float lookUpLimit = -80.0f;
     public float lookDownLimit = 80.0f;
 
-    [Header("Interface Menu (Pause)")]
-    public GameObject menuPausePanel; 
-    private bool isMenuOpen = false;
-
     private CharacterController characterController;
     private Vector3 velocity;
     private float verticalRotation = 0f;
@@ -37,7 +33,6 @@ public class FPSController : MonoBehaviour
     private bool isGrounded;
     private float targetHeight;
 
-    // Gestion des animations
     private Animator animator;
 
     void Start()
@@ -45,29 +40,26 @@ public class FPSController : MonoBehaviour
         characterController = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
         if (animator == null)
-        {
             animator = GetComponentInChildren<Animator>();
-        }
 
         if (groundLayer.value == 0) groundLayer = ~0;
 
         targetHeight = normalHeight;
-        ResumeGame(); 
+
+        // Verrouiller le curseur au démarrage
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     void Update()
     {
         HandleMenuInput();
 
-        if (isMenuOpen) 
-        {
-            if (animator != null) animator.SetBool("isWalking", false);
-            return;
-        }
+        if (Time.timeScale == 0f) return;
 
         CheckGroundStatus();
         HandleRotation();
-        HandleCrouchTransition(); // Gère le changement de taille fluide
+        HandleCrouchTransition();
         HandleMovement();
     }
 
@@ -78,29 +70,19 @@ public class FPSController : MonoBehaviour
 
         if (currentKeyboard.escapeKey.wasPressedThisFrame)
         {
-            if (isMenuOpen)
-                ResumeGame();
+            if (Time.timeScale == 0f)
+            {
+                Time.timeScale = 1f;
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
             else
-                OpenMenu();
+            {
+                Time.timeScale = 0f;
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
         }
-    }
-
-    public void OpenMenu()
-    {
-        isMenuOpen = true;
-        Time.timeScale = 0f; 
-        if (menuPausePanel != null) menuPausePanel.SetActive(true);
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-    }
-
-    public void ResumeGame()
-    {
-        isMenuOpen = false;
-        Time.timeScale = 1f; 
-        if (menuPausePanel != null) menuPausePanel.SetActive(false);
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
     }
 
     public void SetSensitivity(float newSensitivity) { mouseSensitivity = newSensitivity; }
@@ -110,8 +92,12 @@ public class FPSController : MonoBehaviour
 
     void CheckGroundStatus()
     {
-        Vector3 rayStart = transform.position + Vector3.up * 0.1f;
-        isGrounded = Physics.Raycast(rayStart, Vector3.down, groundCheckDistance + 0.1f, groundLayer);
+        isGrounded = characterController.isGrounded;
+        if (!isGrounded)
+        {
+            Vector3 rayStart = transform.position + Vector3.up * 0.1f;
+            isGrounded = Physics.Raycast(rayStart, Vector3.down, groundCheckDistance + 0.1f, groundLayer);
+        }
     }
 
     void HandleRotation()
@@ -133,7 +119,6 @@ public class FPSController : MonoBehaviour
         playerCamera.localRotation = Quaternion.Euler(verticalRotation, 0f, 0f);
     }
 
-    // Alerte et modifie la hauteur du CharacterController de manière fluide
     void HandleCrouchTransition()
     {
         characterController.height = Mathf.Lerp(characterController.height, targetHeight, crouchTransitionSpeed * Time.deltaTime);
@@ -144,18 +129,16 @@ public class FPSController : MonoBehaviour
         Keyboard currentKeyboard = InputSystem.GetDevice<Keyboard>();
         if (currentKeyboard == null) return;
 
-        // --- GESTION DE L'ACCROUPI (CTRL) ---
         bool isCrouching = currentKeyboard.leftCtrlKey.isPressed;
 
         if (isCrouching)
         {
             targetHeight = crouchHeight;
-            currentSpeed = crouchSpeed; // Plus lent quand on est accroupi
+            currentSpeed = crouchSpeed;
         }
         else
         {
             targetHeight = normalHeight;
-            // Choix entre vitesse de course ou de marche standard
             if (currentKeyboard.leftShiftKey.isPressed)
                 currentSpeed = sprintSpeed;
             else
@@ -173,20 +156,20 @@ public class FPSController : MonoBehaviour
         Vector3 move = transform.right * moveX + transform.forward * moveZ;
         characterController.Move(move * currentSpeed * Time.deltaTime);
 
-        // Gestion de l'animation de marche
+        // Animations
         if (animator != null)
         {
-            if (moveX != 0f || moveZ != 0f)
-                animator.SetBool("isWalking", true);
-            else
-                animator.SetBool("isWalking", false);
+            bool isMoving = (moveX != 0f || moveZ != 0f);
+            bool isRunning = isMoving && currentKeyboard.leftShiftKey.isPressed;
+
+            animator.SetBool("isWalking", isMoving);
+            animator.SetBool("isRunning", isRunning);
         }
 
         if (isGrounded)
         {
             if (velocity.y < 0) velocity.y = -2f;
 
-            // On ne peut pas sauter si on est accroupi
             if (currentKeyboard.spaceKey.isPressed && !isCrouching)
             {
                 velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
