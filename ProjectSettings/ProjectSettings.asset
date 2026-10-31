@@ -12,7 +12,7 @@ PlayerSettings:
   targetDevice: 2
   useOnDemandResources: 0
   accelerometerFrequency: 60
-  companyName: DefaultCompany
+  companyName: LePrinceTheo
   productName: Poppy Playtime FANGAME
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
@@ -923,7 +923,7 @@ PlayerSettings:
   qnxGraphicConfPath: 
   apiCompatibilityLevel: 6
   captureStartupLogs: {}
-  activeInputHandler: 1
+  activeInputHandler: 2
   windowsGamepadBackendHint: 0
   cloudProjectId: b88385bc-30e8-48e1-a27b-6fffbfc7d940
   framebufferDepthMemorylessMode: 0

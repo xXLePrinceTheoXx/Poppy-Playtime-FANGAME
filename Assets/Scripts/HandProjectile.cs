@@ -5,6 +5,7 @@ public class HandProjectile : MonoBehaviour
     private Vector3 target;
     private float moveSpeed;
     private Grabpack controller;
+    private HandSide handSide;
     
     private Transform returnTarget;
     private bool isReturning = false;
@@ -12,11 +13,12 @@ public class HandProjectile : MonoBehaviour
     private Rigidbody rb;
     private Collider myCollider;
 
-    public void Setup(Vector3 shootTarget, float speed, Grabpack ctrl)
+    public void Setup(Vector3 shootTarget, float speed, Grabpack ctrl, HandSide side)
     {
         target = shootTarget;
         moveSpeed = speed;
         controller = ctrl;
+        handSide = side;
         isReturning = false;
         isAnchored = false;
     }
@@ -26,11 +28,10 @@ public class HandProjectile : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         myCollider = GetComponent<Collider>();
 
-        // Force les réglages du Rigidbody pour la précision physique
         if (rb != null)
         {
             rb.useGravity = false;
-            rb.isKinematic = true; // On gère le mouvement par code
+            rb.isKinematic = true;
         }
     }
 
@@ -38,43 +39,37 @@ public class HandProjectile : MonoBehaviour
     {
         if (isReturning)
         {
-            // Retour absolu vers le bras du joueur (Recul en ligne droite)
             transform.position = Vector3.MoveTowards(transform.position, returnTarget.position, moveSpeed * Time.deltaTime);
 
             if (Vector3.Distance(transform.position, returnTarget.position) < 0.2f)
             {
-                controller.OnHandReturned();
+                controller.OnHandReturned(handSide);
             }
         }
         else if (!isAnchored)
         {
-            // Déplacement linéaire vers la cible
             transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
 
-            // Si la portée maximale est atteinte aux coordonnées de visée, elle revient
             if (Vector3.Distance(transform.position, target) < 0.05f)
             {
-                controller.RecallHand();
+                // Rappel automatique quand la portée est atteinte
+                controller.OnHandReturned(handSide);
             }
         }
     }
 
-    // GESTION INFAILLIBLE DES COLLISONS PHYSIQUES (Quand Is Trigger est COCHÉ)
     private void OnTriggerEnter(Collider other)
     {
         if (isReturning || isAnchored) return;
 
-        // Anti-collision joueur et caméra
         if (other.CompareTag("Player") || other.name.Contains("Player") || other.name.Contains("Camera") || other.GetComponentInParent<CharacterController>() != null)
         {
             return;
         }
 
-        // Calcule le point d'impact de surface exact et sa normale sur l'objet touché
         Vector3 hitPoint = transform.position;
-        Vector3 hitNormal = Vector3.up; // Valeur par défaut (sol horizontal)
+        Vector3 hitNormal = Vector3.up;
 
-        // Tente de projeter un rayon très court en arrière pour chopper la face du mur traversé
         Ray ray = new Ray(transform.position + (target - transform.position).normalized * -0.5f, (target - transform.position).normalized);
         if (other.Raycast(ray, out RaycastHit hit, 2f))
         {
@@ -82,11 +77,9 @@ public class HandProjectile : MonoBehaviour
             hitNormal = hit.normal;
         }
 
-        // Bloque et oriente la main
         LockOnHand(hitPoint, hitNormal, other.transform);
     }
 
-    // SÉCURITÉ SI IS TRIGGER EST DÉCOCHÉ
     private void OnCollisionEnter(Collision collision)
     {
         if (isReturning || isAnchored) return;
@@ -106,13 +99,9 @@ public class HandProjectile : MonoBehaviour
     {
         isAnchored = true;
 
-        // Éjecte le parent de toute hiérarchie pour figer ses coordonnées globales
         transform.SetParent(null);
-
-        // Positionne la main exactement à l'endroit de l'impact de surface
         transform.position = hitPoint;
 
-        // ALIGNEMENT : Applique l'angle du mur + le redressement à -90 sur l'axe X de la main
         Quaternion surfaceRotation = Quaternion.LookRotation(-surfaceNormal);
         transform.rotation = surfaceRotation * Quaternion.Euler(-90f, 0f, 0f);
 
@@ -122,7 +111,6 @@ public class HandProjectile : MonoBehaviour
             rb.isKinematic = true;
         }
 
-        // Accroche définitivement la main sur l'élément du décor
         transform.SetParent(hitTransform);
     }
 
@@ -132,6 +120,6 @@ public class HandProjectile : MonoBehaviour
         moveSpeed = speed;
         isReturning = true;
         isAnchored = false;
-        transform.SetParent(null); // Se détache du mur
+        transform.SetParent(null);
     }
 }
